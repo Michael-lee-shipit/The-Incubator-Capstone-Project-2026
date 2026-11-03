@@ -1,14 +1,45 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Event Ticketing</title>
-  </head>
-  <body>
-    <main>
-      <h1>Event Ticketing</h1>
-      <p>The Build 4 server is running. Read the <a href="/docs">API docs</a>.</p>
-    </main>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <title>Event Ticketing - Browse Events</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header>
+    <h1>🎟️ Event Hub</h1>
+    <a href="docs.html" class="btn" style="background: transparent; border: 1px solid var(--border);">API Docs</a>
+  </header>
+  <main>
+    <h2>Upcoming Events</h2>
+    <div class="filters-bar">
+      <label>Search
+        <input type="text" id="search-input" placeholder="Event title or venue...">
+      </label>
+      <label>City
+        <select id="city-select">
+          <option value="">All Cities</option>
+          <option value="Lagos">Lagos</option>
+          <option value="Abuja">Abuja</option>
+          <option value="Port Harcourt">Port Harcourt</option>
+        </select>
+      </label>
+      <label>Max Price (₦)
+        <input type="number" id="max-price-input" placeholder="e.g. 5000000">
+      </label>
+      <label>Sort By
+        <select id="sort-select">
+          <option value="">Default</option>
+          <option value="date">Date</option>
+          <option value="price">Price (Low to High)</option>
+        </select>
+      </label>
+    </div>
+    <div id="events-container">Loading...</div>
+  </main>
+  <script type="module">
+    import { initHome } from './js/pages/home.js';
+    initHome();
+  </script>
+</body>
 </html>
