@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Event Ticketing</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <main class="container" style="max-width: 400px; margin: 50px auto; padding: 20px;">
+        <h1 id="form-title">Log In</h1>
+        <div id="error-banner" style="color: #ff6b6b; background: #ffe3e3; padding: 10px; margin-bottom: 15px; display: none; border-radius: 4px;"></div>
+        
+        <form id="auth-form">
+            <div style="margin-bottom: 15px;">
+                <label for="email" style="display: block; margin-bottom: 5px;">Email</label>
+                <input type="email" id="email" required style="width: 100%; padding: 8px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="password" style="display: block; margin-bottom: 5px;">Password (min 8 characters)</label>
+                <input type="password" id="password" required minlength="8" style="width: 100%; padding: 8px;">
+            </div>
+            <div id="role-container" style="margin-bottom: 15px; display: none;">
+                <label for="role" style="display: block; margin-bottom: 5px;">Role</label>
+                <select id="role" style="width: 100%; padding: 8px;">
+                    <option value="attendee">Attendee</option>
+                    <option value="organizer">Organizer</option>
+                    <option value="staff">Staff</option>
+                </select>
+            </div>
+            <button type="submit" id="submit-btn" style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Log In</button>
+        </form>
+
+        <p style="margin-top: 15px; text-align: center;">
+            <a href="#" id="toggle-mode">Need an account? Sign up</a>
+        </p>
+    </main>
+
+    <script type="module" src="/js/login.js"></script>
+</body>
+</html>
