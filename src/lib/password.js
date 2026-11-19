@@ -1,31 +1,27 @@
-import crypto from 'node:crypto';
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 
-// Hash password with scrypt and a random salt
+const scrypt = promisify(scryptCallback);
+const KEY_LENGTH = 64;
+const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+
 export async function hashPassword(password) {
-    return new Promise((resolve, reject) => {
-        const salt = crypto.randomBytes(16).toString('hex');
-        crypto.scrypt(password, salt, 64, (err, derivedKey) => {
-            if (err) reject(err);
-            resolve(`${salt}:${derivedKey.toString('hex')}`);
-        });
-    });
+  if (typeof password !== 'string') throw new TypeError('Password must be a string');
+  const salt = randomBytes(16);
+  const key = await scrypt(password, salt, KEY_LENGTH, SCRYPT_OPTIONS);
+  return `scrypt$16384$8$1$${salt.toString('hex')}$${key.toString('hex')}`;
 }
 
-// Verify password against stored hash using constant-time comparison
 export async function verifyPassword(password, storedHash) {
-    return new Promise((resolve, reject) => {
-        const [salt, key] = storedHash.split(':');
-        if (!salt || !key) return resolve(false);
-        
-        const keyBuffer = Buffer.from(key, 'hex');
-        crypto.scrypt(password, salt, 64, (err, derivedKey) => {
-            if (err) reject(err);
-            try {
-                const match = crypto.timingSafeEqual(keyBuffer, derivedKey);
-                resolve(match);
-            } catch (e) {
-                resolve(false);
-            }
-        });
-    });
+  if (typeof password !== 'string' || typeof storedHash !== 'string') return false;
+  const parts = storedHash.split('$');
+  if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
+
+  const [, cost, blockSize, parallelization, saltHex, keyHex] = parts;
+  if (cost !== '16384' || blockSize !== '8' || parallelization !== '1') return false;
+  if (!/^[0-9a-f]{32}$/i.test(saltHex) || !/^[0-9a-f]{128}$/i.test(keyHex)) return false;
+
+  const expected = Buffer.from(keyHex, 'hex');
+  const actual = await scrypt(password, Buffer.from(saltHex, 'hex'), KEY_LENGTH, SCRYPT_OPTIONS);
+  return timingSafeEqual(expected, actual);
 }

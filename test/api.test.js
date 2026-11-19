@@ -9,6 +9,9 @@ import { createTicketingServer } from '../src/server.js';
 import { createMockPaymentGateway } from '../src/lib/mockPaymentGateway.js';
 import { createMemoryRepository } from '../src/repositories/memory.js';
 import { createSqliteRepository } from '../src/repositories/sqlite.js';
+import { signToken } from '../src/lib/token.js';
+
+process.env.JWT_SECRET = 'test-only-secret-for-event-ticketing';
 
 const ORGANIZER = 'org-1';
 const ADA = 'ada';
@@ -21,12 +24,23 @@ for (const [name, makeRepository] of Object.entries(REPOSITORIES)) {
     let server;
     let baseUrl;
     let gateway;
+    let repository;
 
     // A fresh server for every test, so no test depends on another.
     beforeEach(async () => {
       if (server) await new Promise((resolve) => server.close(resolve));
       gateway = createMockPaymentGateway();
-      server = createTicketingServer({ repository: makeRepository(), paymentGateway: gateway });
+      repository = makeRepository();
+      for (const [id, role] of [[ORGANIZER, 'organizer'], [ADA, 'attendee'], [BAYO, 'attendee']]) {
+        await repository.createUser({
+          id,
+          email: `${id}@example.test`,
+          role,
+          passwordHash: 'test-only',
+          createdAt: new Date().toISOString(),
+        });
+      }
+      server = createTicketingServer({ repository, paymentGateway: gateway });
       await new Promise((resolve, reject) => {
         server.once('error', reject);
         server.listen(0, '127.0.0.1', resolve);
@@ -40,7 +54,10 @@ for (const [name, makeRepository] of Object.entries(REPOSITORIES)) {
 
     async function call(method, path, { user, body } = {}) {
       const headers = {};
-      if (user) headers['x-user-id'] = user;
+      if (user) {
+        const role = user === ORGANIZER ? 'organizer' : 'attendee';
+        headers.authorization = `Bearer ${signToken({ sub: user, role, email: `${user}@example.test` })}`;
+      }
       if (body !== undefined) headers['content-type'] = 'application/json';
       const response = await fetch(`${baseUrl}${path}`, {
         method,
@@ -119,7 +136,7 @@ for (const [name, makeRepository] of Object.entries(REPOSITORIES)) {
         });
       }
 
-      it('requires the x-user-id header', async () => {
+      it('requires a bearer token', async () => {
         const result = await call('POST', '/api/events', { body: { title: 'T', city: 'Lagos', startsAt: '2026-12-05' } });
         assertError(result, 401, 'UNAUTHENTICATED');
       });
@@ -317,7 +334,7 @@ for (const [name, makeRepository] of Object.entries(REPOSITORIES)) {
       it('two pay requests at the same moment still charge only once', async () => {
         const slowGateway = createMockPaymentGateway({ delayMs: 20 });
         await new Promise((resolve) => server.close(resolve));
-        server = createTicketingServer({ repository: makeRepository(), paymentGateway: slowGateway });
+        server = createTicketingServer({ repository, paymentGateway: slowGateway });
         await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
         baseUrl = `http://127.0.0.1:${server.address().port}`;
 
@@ -329,7 +346,7 @@ for (const [name, makeRepository] of Object.entries(REPOSITORIES)) {
 
       it('only the person who made the booking can pay for it', async () => {
         const booking = await pendingBooking();
-        assertError(await pay(BAYO, booking.reference), 403, 'FORBIDDEN');
+        assertError(await pay(BAYO, booking.reference), 404, 'NOT_FOUND');
         assertError(await pay(undefined, booking.reference), 401, 'UNAUTHENTICATED');
       });
 
@@ -363,7 +380,7 @@ for (const [name, makeRepository] of Object.entries(REPOSITORIES)) {
       it("refuses to cancel someone else's booking", async () => {
         const { tier } = await publishedEventWithTier();
         const booking = (await book(ADA, tier.id, 1)).body;
-        assertError(await call('POST', `/api/bookings/${booking.reference}/cancel`, { user: BAYO }), 403, 'FORBIDDEN');
+        assertError(await call('POST', `/api/bookings/${booking.reference}/cancel`, { user: BAYO }), 404, 'NOT_FOUND');
       });
     });
   });

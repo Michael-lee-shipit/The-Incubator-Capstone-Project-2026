@@ -6,6 +6,8 @@ import { createMockPaymentGateway } from './lib/mockPaymentGateway.js';
 import { createSqliteRepository } from './repositories/sqlite.js';
 import { createBookingService } from './services/bookingService.js';
 import { createEventService } from './services/eventService.js';
+import { createAuthService } from './services/authService.js';
+import { validateTokenSecret } from './lib/token.js';
 import { DATABASE_PATH, PORT } from './config.js';
 
 // The one place where the layers are wired together. Tests call this too, and
@@ -17,12 +19,14 @@ export function createTicketingServer({
 } = {}) {
   const eventService = createEventService({ repository });
   const bookingService = createBookingService({ repository, paymentGateway });
-  const router = registerApiRoutes(new Router(), { eventService, bookingService });
+  const authService = createAuthService({ repository });
+  const router = registerApiRoutes(new Router(), { eventService, bookingService, authService });
   return createAppServer({ router });
 }
 
 // The real server keeps its data in a SQLite file, so it survives a restart.
 export function startServer(port = PORT, databasePath = DATABASE_PATH) {
+  validateTokenSecret();
   const repository = createSqliteRepository({ path: databasePath });
   const server = createTicketingServer({ repository });
   server.on('close', () => repository.close());

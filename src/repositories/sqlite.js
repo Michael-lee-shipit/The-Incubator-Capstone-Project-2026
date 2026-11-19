@@ -51,9 +51,23 @@ const toBooking = (row) =>
     cancelledAt: row.cancelled_at,
   });
 
+const toUser = (row) =>
+  row && {
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    passwordHash: row.password_hash,
+    createdAt: row.created_at,
+  };
+
 export function createSqliteRepository({ path, db = openDatabase(path) } = {}) {
   const sql = {
     ensureUser: db.prepare('INSERT OR IGNORE INTO users (id) VALUES (?)'),
+    insertUser: db.prepare(
+      'INSERT INTO users (id, email, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?)',
+    ),
+    findUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
+    findUserById: db.prepare('SELECT * FROM users WHERE id = ?'),
 
     insertEvent: db.prepare(
       `INSERT INTO events (id, organizer_id, title, city, venue, starts_at, status)
@@ -91,6 +105,7 @@ export function createSqliteRepository({ path, db = openDatabase(path) } = {}) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     findBookingByReference: db.prepare('SELECT * FROM bookings WHERE reference = ?'),
+    listBookingsByUser: db.prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY rowid DESC'),
     updateBooking: db.prepare(
       `UPDATE bookings SET status = ?, charge_id = ?, paid_at = ?, cancelled_at = ?
        WHERE reference = ?`,
@@ -102,6 +117,17 @@ export function createSqliteRepository({ path, db = openDatabase(path) } = {}) {
   const findBooking = (reference) => toBooking(sql.findBookingByReference.get(reference));
 
   return {
+    async createUser(user) {
+      sql.insertUser.run(user.id, user.email, user.role, user.passwordHash, user.createdAt);
+      return toUser(sql.findUserById.get(user.id));
+    },
+    async findUserByEmail(email) {
+      return toUser(sql.findUserByEmail.get(email));
+    },
+    async findUserById(id) {
+      return toUser(sql.findUserById.get(id));
+    },
+
     async insertEvent(event) {
       sql.ensureUser.run(event.organizerId);
       sql.insertEvent.run(
@@ -170,6 +196,9 @@ export function createSqliteRepository({ path, db = openDatabase(path) } = {}) {
     },
     async findBookingByReference(reference) {
       return findBooking(reference);
+    },
+    async listBookingsByUser(userId) {
+      return sql.listBookingsByUser.all(userId).map(toBooking);
     },
     async updateBooking(booking) {
       sql.updateBooking.run(

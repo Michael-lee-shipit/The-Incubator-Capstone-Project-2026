@@ -12,8 +12,28 @@ export function createMemoryRepository() {
   const events = new Map(); // eventId -> event
   const tiers = new Map(); // tierId -> tier
   const bookings = new Map(); // reference -> booking  (O(1) lookup by reference)
+  const users = new Map(); // userId -> user
+  const userIdsByEmail = new Map(); // normalized email -> userId
 
   return {
+    async createUser(user) {
+      if (userIdsByEmail.has(user.email)) {
+        const error = new Error('UNIQUE constraint failed: users.email');
+        error.code = 'ERR_SQLITE_CONSTRAINT_UNIQUE';
+        throw error;
+      }
+      users.set(user.id, copy(user));
+      userIdsByEmail.set(user.email, user.id);
+      return copy(user);
+    },
+    async findUserByEmail(email) {
+      const id = userIdsByEmail.get(email);
+      return copy(users.get(id));
+    },
+    async findUserById(id) {
+      return copy(users.get(id));
+    },
+
     async insertEvent(event) {
       events.set(event.id, copy(event));
       return copy(event);
@@ -66,6 +86,9 @@ export function createMemoryRepository() {
     },
     async findBookingByReference(reference) {
       return copy(bookings.get(reference));
+    },
+    async listBookingsByUser(userId) {
+      return [...bookings.values()].filter((booking) => booking.userId === userId).map(copy);
     },
     async updateBooking(booking) {
       bookings.set(booking.reference, copy(booking));

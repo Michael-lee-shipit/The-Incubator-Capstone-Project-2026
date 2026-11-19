@@ -1,53 +1,54 @@
-// public/js/pages/home.js
-import { listEvents } from '../api.js';
+import { api } from '../api.js';
 import { el, formatPrice } from '../ui.js';
 
 export async function initHome() {
   const container = document.getElementById('events-container');
-  const searchInput = document.getElementById('search-input');
-  const citySelect = document.getElementById('city-select');
-  const maxPriceInput = document.getElementById('max-price-input');
-  const sortSelect = document.getElementById('sort-select');
+  const status = document.getElementById('events-status');
+  const error = document.getElementById('events-error');
+  const search = document.getElementById('search-input');
+  const city = document.getElementById('city-select');
+  const maxPrice = document.getElementById('max-price-input');
+  const sort = document.getElementById('sort-select');
+  let debounce;
 
   async function render() {
-    container.textContent = 'Loading events...';
-    try {
+    clearTimeout(debounce);
+    debounce = setTimeout(async () => {
+      status.textContent = 'Loading events…';
+      error.hidden = true;
+      container.replaceChildren();
       const filters = {
-        search: searchInput.value,
-        city: citySelect.value,
-        maxPrice: maxPriceInput.value,
-        sort: sortSelect.value
+        q: search.value.trim(),
+        city: city.value,
+        maxPriceCents: maxPrice.value === '' ? undefined : Math.round(Number(maxPrice.value) * 100),
+        sort: sort.value || 'date',
       };
-      const data = await listEvents(filters);
-      container.textContent = '';
-
-      if (data.events.length === 0) {
-        container.appendChild(el('p', {}, ['No events found matching your criteria.']));
-        return;
+      try {
+        const { events } = await api.getEvents(filters);
+        status.textContent = events.length ? '' : 'No events found matching your criteria.';
+        for (const event of events) {
+          container.append(el('article', { className: 'event-card' }, [
+            el('h3', {}, [event.title]),
+            el('p', {}, [`${event.venue} · ${event.city}`]),
+            el('p', {}, [new Date(event.startsAt).toLocaleString()]),
+            el('p', {}, [
+              event.minPriceCents === null ? 'No ticket tiers yet' : `From ${formatPrice(event.minPriceCents)}`,
+            ]),
+            el('p', {}, [`${event.seatsLeft} seats remaining`]),
+            el('a', { className: 'btn', href: `/event.html?id=${encodeURIComponent(event.id)}` }, ['View tickets']),
+          ]));
+        }
+      } catch (requestError) {
+        status.textContent = '';
+        error.textContent = requestError.message;
+        error.hidden = false;
       }
-
-      const grid = el('div', { className: 'events-grid' }, data.events.map(event => {
-        const minPrice = Math.min(...event.tiers.map(t => t.price));
-        return el('div', { className: 'event-card' }, [
-          el('h3', {}, [event.title]),
-          el('p', { style: 'color: var(--text-muted); margin: 0;' }, [`📍 ${event.venue}, ${event.city}`]),
-          el('p', { style: 'margin: 0;' }, [`📅 ${new Date(event.date).toLocaleDateString()}`]),
-          el('p', { style: 'font-weight: bold; color: var(--primary);' }, [`From ${formatPrice(minPrice)}`]),
-          el('a', { className: 'btn', href: `event.html?id=${event.id}` }, ['View Details & Tickets'])
-        ]);
-      }));
-
-      container.appendChild(grid);
-    } catch (err) {
-      container.textContent = 'Failed to load events.';
-      console.error(err);
-    }
+    }, search.value ? 180 : 0);
   }
 
-  searchInput.addEventListener('input', render);
-  citySelect.addEventListener('change', render);
-  maxPriceInput.addEventListener('input', render);
-  sortSelect.addEventListener('change', render);
-
-  render();
+  search.addEventListener('input', render);
+  city.addEventListener('change', render);
+  maxPrice.addEventListener('input', render);
+  sort.addEventListener('change', render);
+  await render();
 }

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Event Ticketing API",
-    "version": "0.5.0",
-    "description": "The Build 4 API: create events and ticket tiers, publish them, search, book, pay with a mock card and cancel.\n\nSince Build 5, data is stored in **SQLite** (`data/ticketing.db`) and survives a restart. When many people book the last seats at the same moment, exactly enough of them succeed and the rest get `SOLD_OUT`.\n\n**Who you are.** Until Build 7 adds login, send an `x-user-id` header on every call that changes data.\n\n**Money** is always a whole number of the smallest unit (kobo or cents): `500000` is 5,000.00.\n\n**Errors** always have the same shape: `{ \"error\": { \"code\": \"SOLD_OUT\", \"message\": \"...\" } }`."
+    "version": "0.7.0",
+    "description": "Sign up and log in, then use the returned bearer token for protected calls. Passwords are stored as scrypt hashes.\n\nThe API supports creating events and ticket tiers, publishing, searching, booking, mock payment and cancellation.\n\nSince Build 5, data is stored in **SQLite** (`data/ticketing.db`) and survives a restart. When many people book the last seats at the same moment, exactly enough of them succeed and the rest get `SOLD_OUT`.\n\n**Roles.** Signup accepts `attendee`, `organizer` or `staff`. The API enforces role and ownership checks.\n\n**Money** is always a whole number of the smallest unit (kobo or cents): `500000` is 5,000.00.\n\n**Errors** always have the same shape: `{ \"error\": { \"code\": \"SOLD_OUT\", \"message\": \"...\" } }`."
   },
   "servers": [
     {
@@ -12,6 +12,10 @@
     }
   ],
   "tags": [
+    {
+      "name": "Authentication",
+      "description": "Sign up, log in and inspect the current account."
+    },
     {
       "name": "Events",
       "description": "Organizers create and publish events. Anyone can search published ones."
@@ -25,6 +29,175 @@
     }
   ],
   "paths": {
+    "/api/auth/signup": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Create an account",
+        "operationId": "signup",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "attendee",
+                      "organizer",
+                      "staff"
+                    ],
+                    "default": "attendee"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The account and signed bearer token. No password is returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input is missing or wrong. Possible codes: `VALIDATION`, `INVALID_JSON`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An account already uses this email. Possible codes: `EMAIL_TAKEN`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Log in",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The signed bearer token and public user details.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The email or password is incorrect. Possible codes: `INVALID_CREDENTIALS`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get the current user",
+        "operationId": "getMe",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The authenticated user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -62,7 +235,7 @@
         "operationId": "createEvent",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "requestBody": {
@@ -97,7 +270,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -226,7 +399,7 @@
         "security": [
           {},
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "parameters": [
@@ -264,6 +437,60 @@
         }
       }
     },
+    "/api/events/mine": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List my events",
+        "operationId": "listMyEvents",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events owned by the organizer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventDetail"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You are not the owner. Possible codes: `FORBIDDEN`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/events/{id}/tiers": {
       "post": {
         "tags": [
@@ -274,7 +501,7 @@
         "operationId": "addTier",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "parameters": [
@@ -320,7 +547,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -362,7 +589,7 @@
         "operationId": "publishEvent",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "parameters": [
@@ -388,7 +615,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -440,7 +667,7 @@
         "operationId": "unpublishEvent",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "parameters": [
@@ -466,7 +693,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -508,7 +735,7 @@
         "operationId": "book",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "requestBody": {
@@ -543,7 +770,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -573,6 +800,58 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "Bookings"
+        ],
+        "summary": "List my bookings",
+        "operationId": "listBookings",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bookings belonging to the authenticated attendee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bookings": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Booking"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You are not the owner. Possible codes: `FORBIDDEN`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/bookings/{reference}": {
@@ -584,7 +863,7 @@
         "operationId": "getBooking",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "parameters": [
@@ -610,7 +889,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -652,7 +931,7 @@
         "operationId": "pay",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "parameters": [
@@ -710,7 +989,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -772,7 +1051,7 @@
         "operationId": "cancel",
         "security": [
           {
-            "UserId": []
+            "BearerAuth": []
           }
         ],
         "parameters": [
@@ -798,7 +1077,7 @@
             }
           },
           "401": {
-            "description": "No `x-user-id` header. Possible codes: `UNAUTHENTICATED`.",
+            "description": "A missing, invalid or expired bearer token. Possible codes: `UNAUTHENTICATED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -843,14 +1122,52 @@
   },
   "components": {
     "securitySchemes": {
-      "UserId": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "x-user-id",
-        "description": "Who is calling, for example `ada` or `org-1`. Stands in for login until Build 7."
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
       }
     },
     "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "attendee",
+              "organizer",
+              "staff"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "required": [
+          "token",
+          "user"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "required": [

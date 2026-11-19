@@ -22,7 +22,7 @@ export function createBookingService({ repository, paymentGateway, now = () => n
     const booking = await repository.findBookingByReference(String(reference).toUpperCase());
     if (!booking) throw new DomainError('NOT_FOUND', 'Booking not found');
     if (booking.userId !== actorId) {
-      throw new DomainError('FORBIDDEN', 'Only the person who made this booking can do that');
+      throw new DomainError('NOT_FOUND', 'Booking not found');
     }
     return booking;
   }
@@ -81,6 +81,11 @@ export function createBookingService({ repository, paymentGateway, now = () => n
 
     async getBooking(actorId, reference) {
       return toPublicBooking(await getOwnBooking(requireActor(actorId), reference));
+    },
+
+    async listBookings(actorId) {
+      const userId = requireActor(actorId);
+      return (await repository.listBookingsByUser(userId)).map(toPublicBooking);
     },
 
     async pay(actorId, reference, input) {

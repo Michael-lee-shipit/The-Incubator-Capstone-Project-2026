@@ -21,14 +21,19 @@ describe('OpenAPI document', () => {
 
   it('documents every API route', () => {
     const expected = [
+      'POST /api/auth/signup',
+      'POST /api/auth/login',
+      'GET /api/auth/me',
       'GET /health',
       'POST /api/events',
       'GET /api/events',
+      'GET /api/events/mine',
       'GET /api/events/{id}',
       'POST /api/events/{id}/tiers',
       'POST /api/events/{id}/publish',
       'POST /api/events/{id}/unpublish',
       'POST /api/bookings',
+      'GET /api/bookings',
       'GET /api/bookings/{reference}',
       'POST /api/bookings/{reference}/pay',
       'POST /api/bookings/{reference}/cancel',

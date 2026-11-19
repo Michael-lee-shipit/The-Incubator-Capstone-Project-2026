@@ -13,8 +13,7 @@
     <script>
       Scalar.createApiReference('#app', {
         url: '/openapi.json',
-        // Pre-select the x-user-id header so "Test Request" works straight away.
-        authentication: { preferredSecurityScheme: 'UserId' },
+        authentication: { preferredSecurityScheme: 'BearerAuth' },
       });
     </script>
   </body>

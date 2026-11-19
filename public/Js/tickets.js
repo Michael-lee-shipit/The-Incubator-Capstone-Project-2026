@@ -1,62 +1,72 @@
-import { api } from './api.js';
+import { api, requireSession } from './api.js';
 import { clearSession } from './session.js';
+import { el, formatPrice } from './ui.js';
 
-const loadingEl = document.getElementById('loading');
-const errorEl = document.getElementById('error');
-const bookingsList = document.getElementById('bookings-list');
-const logoutBtn = document.getElementById('logout-btn');
+const status = document.getElementById('page-status');
+const error = document.getElementById('error');
+const list = document.getElementById('bookings-list');
 
-logoutBtn.addEventListener('click', () => {
-    clearSession();
-    window.location.href = '/login.html';
+document.getElementById('logout-btn').addEventListener('click', () => {
+  clearSession();
+  window.location.assign('/login.html');
 });
 
-async function loadBookings() {
-    loadingEl.style.display = 'block';
-    errorEl.style.display = 'none';
-    try {
-        const data = await api.getBookings();
-        bookingsList.innerHTML = '';
-        
-        if (!data.bookings || data.bookings.length === 0) {
-            bookingsList.innerHTML = '<li>You have no bookings yet.</li>';
-            return;
-        }
-
-        data.bookings.forEach(b => {
-            const li = document.createElement('li');
-            li.style.cssText = 'padding: 15px; border: 1px solid #ddd; margin-bottom: 10px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;';
-            li.innerHTML = `
-                <div>
-                    <strong>Reference:</strong> ${b.reference}<br>
-                    <strong>Status:</strong> <span style="text-transform: uppercase;">${b.status}</span><br>
-                    <strong>Quantity:</strong> ${b.quantity}
-                </div>
-            `;
-            
-            if (b.status === 'pending') {
-                const cancelBtn = document.createElement('button');
-                cancelBtn.textContent = 'Cancel Booking';
-                cancelBtn.style.cssText = 'padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;';
-                cancelBtn.onclick = async () => {
-                    try {
-                        await api.cancelBooking(b.id || b.reference);
-                        loadBookings();
-                    } catch (err) {
-                        alert(err.message);
-                    }
-                };
-                li.appendChild(cancelBtn);
-            }
-
-            bookingsList.appendChild(li);
-        });
-    } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.style.display = 'block';
-    } finally {
-        loadingEl.style.display = 'none';
-    }
+function showError(message) {
+  error.textContent = message;
+  error.hidden = false;
 }
 
-loadBookings();
+async function loadBookings() {
+  error.hidden = true;
+  status.textContent = 'Loading your bookings…';
+  list.replaceChildren();
+  try {
+    const { bookings } = await api.getBookings();
+    status.textContent = bookings.length ? '' : 'You have no bookings yet.';
+    for (const booking of bookings) {
+      const details = el('div', {}, [
+        el('h3', {}, [`Booking ${booking.reference}`]),
+        el('p', {}, [`${booking.quantity} ticket(s) · ${formatPrice(booking.amountCents)} · ${booking.status}`]),
+        el('p', {}, [`Event: ${booking.eventId} · Tier: ${booking.tierId}`]),
+      ]);
+      const card = el('li', { className: 'panel booking-card' }, [details]);
+      if (booking.status === 'pending') {
+        const actions = el('div', { className: 'nav-links' });
+        const payButton = el('button', { className: 'btn', type: 'button' }, ['Pay with mock success']);
+        payButton.addEventListener('click', async () => {
+          payButton.disabled = true;
+          try {
+            await api.payBooking(booking.reference, 'tok_success');
+            await loadBookings();
+          } catch (requestError) {
+            showError(requestError.message);
+            payButton.disabled = false;
+          }
+        });
+        const cancelButton = el('button', { className: 'btn btn-danger', type: 'button' }, ['Cancel booking']);
+        cancelButton.addEventListener('click', async () => {
+          cancelButton.disabled = true;
+          try {
+            await api.cancelBooking(booking.reference);
+            await loadBookings();
+          } catch (requestError) {
+            showError(requestError.message);
+            cancelButton.disabled = false;
+          }
+        });
+        actions.append(payButton, cancelButton);
+        card.append(actions);
+      }
+      list.append(card);
+    }
+  } catch (requestError) {
+    status.textContent = '';
+    showError(requestError.message);
+  }
+}
+
+const user = await requireSession('attendee');
+if (user) {
+  status.textContent = `Signed in as ${user.email}`;
+  await loadBookings();
+}

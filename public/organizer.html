@@ -1,39 +1,38 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Organizer Dashboard</title>
-    <link rel="stylesheet" href="/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Organizer dashboard - Event Hub</title>
+  <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-    <header style="padding: 20px; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center;">
-        <h1>Organizer Dashboard</h1>
-        <nav>
-            <a href="/">Home</a> | 
-            <button id="logout-btn" style="padding: 5px 10px; cursor: pointer;">Log Out</button>
-        </nav>
-    </header>
-
-    <main class="container" style="padding: 20px; max-width: 900px; margin: auto;">
-        <section style="background: #fff; padding: 20px; border: 1px solid #ddd; margin-bottom: 20px; border-radius: 4px;">
-            <h2>Create New Event</h2>
-            <form id="create-event-form">
-                <div style="margin-bottom: 10px;"><input type="text" id="title" placeholder="Event Title" required style="width: 100%; padding: 8px;"></div>
-                <div style="margin-bottom: 10px;"><input type="text" id="city" placeholder="City" required style="width: 100%; padding: 8px;"></div>
-                <div style="margin-bottom: 10px;"><input type="text" id="venue" placeholder="Venue" required style="width: 100%; padding: 8px;"></div>
-                <div style="margin-bottom: 10px;"><input type="datetime-local" id="date" required style="width: 100%; padding: 8px;"></div>
-                <button type="submit" style="padding: 10px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Create Event</button>
-            </form>
-        </section>
-
-        <section>
-            <h2>Your Events</h2>
-            <div id="error" style="color: #ff6b6b; background: #ffe3e3; padding: 10px; margin-bottom: 15px; display: none; border-radius: 4px;"></div>
-            <ul id="events-list" style="list-style: none; padding: 0;"></ul>
-        </section>
-    </main>
-
-    <script type="module" src="/js/organizer.js"></script>
+  <header>
+    <h1>Organizer dashboard</h1>
+    <nav class="nav-links">
+      <a href="/">Browse events</a>
+      <button id="logout-btn" class="btn btn-secondary" type="button">Log out</button>
+    </nav>
+  </header>
+  <main>
+    <p id="page-status" role="status">Checking your session…</p>
+    <div id="error" class="alert-error" role="alert" hidden></div>
+    <section class="panel">
+      <h2>Create an event</h2>
+      <form id="create-event-form" class="form-grid">
+        <label>Title <input id="title" name="title" required maxlength="120"></label>
+        <label>City <input id="city" name="city" required maxlength="100"></label>
+        <label>Venue <input id="venue" name="venue" required maxlength="160"></label>
+        <label>Starts at <input id="starts-at" name="startsAt" type="datetime-local" required></label>
+        <button id="create-event-button" class="btn" type="submit">Create draft</button>
+      </form>
+    </section>
+    <section>
+      <h2>Your events</h2>
+      <p id="events-loading" role="status"></p>
+      <div id="events-list" class="stack-list"></div>
+    </section>
+  </main>
+  <script type="module" src="/Js/organizer.js"></script>
 </body>
 </html>
