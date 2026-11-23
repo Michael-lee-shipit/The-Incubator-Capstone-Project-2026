@@ -11,8 +11,8 @@ const errorResponse = (description, codes) => ({
   ...json(ref('Error')),
 });
 
-// Calls that need to know who you are. Scalar shows an "x-user-id" box for these.
-const asUser = [{ UserId: [] }];
+// Protected endpoints use the signed bearer token returned by login/signup.
+const asUser = [{ BearerAuth: [] }];
 const anyone = [];
 const eventIdParam = { name: 'id', in: 'path', required: true, description: 'Event id', schema: { type: 'string' } };
 const referenceParam = {
@@ -25,7 +25,7 @@ const referenceParam = {
 
 const errors = {
   validation: errorResponse('The input is missing or wrong.', ['VALIDATION', 'INVALID_JSON']),
-  unauthenticated: errorResponse('No `x-user-id` header.', ['UNAUTHENTICATED']),
+  unauthenticated: errorResponse('A missing, invalid or expired bearer token.', ['UNAUTHENTICATED']),
   forbidden: errorResponse('You are not the owner.', ['FORBIDDEN']),
   notFound: errorResponse('It does not exist (or is a draft you cannot see).', ['NOT_FOUND']),
 };
@@ -34,13 +34,17 @@ export const openApiDocument = {
   openapi: '3.1.0',
   info: {
     title: 'Event Ticketing API',
-    version: '0.5.0',
+    version: '0.8.0',
     description: [
-      'The Build 4 API: create events and ticket tiers, publish them, search, book, pay with a mock card and cancel.',
+      'Sign up and log in, then use the returned bearer token for protected calls. Passwords are stored as scrypt hashes.',
+      '',
+      'The API supports creating events and ticket tiers, publishing, searching, booking, mock payment, refunds and waitlist offers.',
+      '',
+      'Pending booking holds and waitlist seat offers last 15 minutes. Expired holds release seats automatically. Refunds are 100% at least 7 days before an event, 50% at least 2 days before it, and 0% closer to the start.',
       '',
       'Since Build 5, data is stored in **SQLite** (`data/ticketing.db`) and survives a restart. When many people book the last seats at the same moment, exactly enough of them succeed and the rest get `SOLD_OUT`.',
       '',
-      '**Who you are.** Until Build 7 adds login, send an `x-user-id` header on every call that changes data.',
+      '**Roles.** Signup accepts `attendee`, `organizer` or `staff`. The API enforces role and ownership checks.',
       '',
       '**Money** is always a whole number of the smallest unit (kobo or cents): `500000` is 5,000.00.',
       '',
@@ -49,11 +53,67 @@ export const openApiDocument = {
   },
   servers: [{ url: '/', description: 'This server' }],
   tags: [
+    { name: 'Authentication', description: 'Sign up, log in and inspect the current account.' },
     { name: 'Events', description: 'Organizers create and publish events. Anyone can search published ones.' },
     { name: 'Bookings', description: 'Attendees book, pay and cancel. Only the person who made a booking can see or change it.' },
     { name: 'System' },
   ],
   paths: {
+    '/api/auth/signup': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Create an account',
+        operationId: 'signup',
+        requestBody: {
+          required: true,
+          ...json({
+            type: 'object',
+            required: ['email', 'password'],
+            properties: {
+              email: { type: 'string', format: 'email' },
+              password: { type: 'string', minLength: 8 },
+              role: { type: 'string', enum: ['attendee', 'organizer', 'staff'], default: 'attendee' },
+            },
+          }),
+        },
+        responses: {
+          201: { description: 'The account and signed bearer token. No password is returned.', ...json(ref('Session')) },
+          400: errors.validation,
+          409: errorResponse('An account already uses this email.', ['EMAIL_TAKEN']),
+        },
+      },
+    },
+    '/api/auth/login': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Log in',
+        operationId: 'login',
+        requestBody: {
+          required: true,
+          ...json({
+            type: 'object',
+            required: ['email', 'password'],
+            properties: { email: { type: 'string', format: 'email' }, password: { type: 'string' } },
+          }),
+        },
+        responses: {
+          200: { description: 'The signed bearer token and public user details.', ...json(ref('Session')) },
+          401: errorResponse('The email or password is incorrect.', ['INVALID_CREDENTIALS']),
+        },
+      },
+    },
+    '/api/auth/me': {
+      get: {
+        tags: ['Authentication'],
+        summary: 'Get the current user',
+        operationId: 'getMe',
+        security: asUser,
+        responses: {
+          200: { description: 'The authenticated user.', ...json({ type: 'object', properties: { user: ref('User') } }) },
+          401: errors.unauthenticated,
+        },
+      },
+    },
     '/health': {
       get: {
         tags: ['System'],
@@ -117,10 +177,23 @@ export const openApiDocument = {
         summary: 'View an event',
         description: 'A published event, or your own draft. Includes each tier with its seats left.',
         operationId: 'getEvent',
-        // Anyone can view a published event; send x-user-id to see your own draft.
-        security: [{}, { UserId: [] }],
+        // Anyone can view a published event; a token is needed for own drafts.
+        security: [{}, { BearerAuth: [] }],
         parameters: [eventIdParam],
         responses: { 200: { description: 'The event and its tiers.', ...json(ref('EventDetail')) }, 404: errors.notFound },
+      },
+    },
+    '/api/events/mine': {
+      get: {
+        tags: ['Events'],
+        summary: 'List my events',
+        operationId: 'listMyEvents',
+        security: asUser,
+        responses: {
+          200: { description: 'Events owned by the organizer.', ...json({ type: 'object', properties: { events: { type: 'array', items: ref('EventDetail') } } }) },
+          401: errors.unauthenticated,
+          403: errors.forbidden,
+        },
       },
     },
     '/api/events/{id}/tiers': {
@@ -190,6 +263,17 @@ export const openApiDocument = {
           409: errorResponse('Not enough seats left, or the event is not published.', ['SOLD_OUT', 'INVALID_STATE']),
         },
       },
+      get: {
+        tags: ['Bookings'],
+        summary: 'List my bookings',
+        operationId: 'listBookings',
+        security: asUser,
+        responses: {
+          200: { description: 'Bookings belonging to the authenticated attendee.', ...json({ type: 'object', properties: { bookings: { type: 'array', items: ref('Booking') } } }) },
+          401: errors.unauthenticated,
+          403: errors.forbidden,
+        },
+      },
     },
     '/api/bookings/{reference}': {
       get: {
@@ -243,8 +327,8 @@ export const openApiDocument = {
     '/api/bookings/{reference}/cancel': {
       post: {
         tags: ['Bookings'],
-        summary: 'Cancel an unpaid booking',
-        description: 'Cancels a `pending` booking and gives its seats back. Paid bookings need a refund, which arrives in Build 8.',
+        summary: 'Cancel a booking',
+        description: 'Cancels a pending booking or cancels a paid booking with the time-based refund policy. Seats are released once.',
         operationId: 'cancel',
         security: asUser,
         parameters: [referenceParam],
@@ -253,21 +337,91 @@ export const openApiDocument = {
           401: errors.unauthenticated,
           403: errors.forbidden,
           404: errors.notFound,
-          409: errorResponse('The booking is paid or already cancelled.', ['INVALID_STATE', 'INVALID_TRANSITION']),
+          409: errorResponse('The event has started or the booking was already cancelled.', ['EVENT_STARTED', 'INVALID_TRANSITION']),
+        },
+      },
+    },
+    '/api/bookings/{reference}/refund-preview': {
+      get: {
+        tags: ['Bookings'],
+        summary: 'Preview a cancellation refund',
+        operationId: 'previewRefund',
+        security: asUser,
+        parameters: [referenceParam],
+        responses: {
+          200: { description: 'The current refund amount and policy percentage.', ...json(ref('RefundPreview')) },
+          401: errors.unauthenticated,
+          404: errors.notFound,
+          409: errorResponse('Only paid bookings before the event starts can be previewed.', ['EVENT_STARTED', 'INVALID_STATE']),
+        },
+      },
+    },
+    '/api/waitlist': {
+      post: {
+        tags: ['Waitlist'],
+        summary: 'Join a sold-out ticket tier waitlist',
+        operationId: 'joinWaitlist',
+        security: asUser,
+        requestBody: { required: true, ...json(ref('NewWaitlistEntry')) },
+        responses: {
+          201: { description: 'The new waitlist entry.', ...json(ref('WaitlistEntry')) },
+          401: errors.unauthenticated,
+          404: errors.notFound,
+          409: errorResponse('The tier is not sold out or the attendee is already waiting.', ['NOT_SOLD_OUT', 'ALREADY_ON_WAITLIST']),
+        },
+      },
+    },
+    '/api/waitlist/offers': {
+      get: {
+        tags: ['Waitlist'],
+        summary: 'List my active waitlist offers',
+        operationId: 'listWaitlistOffers',
+        security: asUser,
+        responses: {
+          200: { description: 'Active offers held for the authenticated attendee.', ...json({ type: 'object', properties: { offers: { type: 'array', items: ref('WaitlistOffer') } } }) },
+          401: errors.unauthenticated,
+        },
+      },
+    },
+    '/api/waitlist/offers/{id}/accept': {
+      post: {
+        tags: ['Waitlist'],
+        summary: 'Accept a waitlist offer',
+        operationId: 'acceptWaitlistOffer',
+        security: asUser,
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'The accepted offer and a pending booking for the held seats.', ...json({ type: 'object', properties: { offer: ref('WaitlistOffer'), booking: ref('Booking') } }) },
+          401: errors.unauthenticated,
+          404: errors.notFound,
+          409: errorResponse('The offer has expired or is no longer available.', ['OFFER_EXPIRED']),
         },
       },
     },
   },
   components: {
     securitySchemes: {
-      UserId: {
-        type: 'apiKey',
-        in: 'header',
-        name: 'x-user-id',
-        description: 'Who is calling, for example `ada` or `org-1`. Stands in for login until Build 7.',
+      BearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
       },
     },
     schemas: {
+      User: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          email: { type: 'string', format: 'email' },
+          role: { type: 'string', enum: ['attendee', 'organizer', 'staff'] },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      Session: {
+        type: 'object',
+        required: ['token', 'user'],
+        properties: { token: { type: 'string' }, user: ref('User') },
+      },
       Error: {
         type: 'object',
         required: ['error'],
@@ -351,8 +505,51 @@ export const openApiDocument = {
           amountCents: { type: 'integer', description: 'Tier price times quantity.' },
           status: { type: 'string', enum: ['pending', 'paid', 'cancelled', 'refunded', 'checked_in'] },
           createdAt: { type: 'string', format: 'date-time' },
+          expiresAt: { type: 'string', format: 'date-time' },
           paidAt: { type: 'string', format: 'date-time' },
           cancelledAt: { type: 'string', format: 'date-time' },
+          expiredAt: { type: 'string', format: 'date-time' },
+          refundAmountCents: { type: 'integer', minimum: 0 },
+          refundedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      RefundPreview: {
+        type: 'object',
+        required: ['reference', 'amountCents', 'percentage'],
+        properties: {
+          reference: { type: 'string' },
+          amountCents: { type: 'integer', minimum: 0 },
+          percentage: { type: 'integer', enum: [0, 50, 100] },
+        },
+      },
+      NewWaitlistEntry: {
+        type: 'object',
+        required: ['tierId', 'quantity'],
+        properties: {
+          tierId: { type: 'string' },
+          quantity: { type: 'integer', minimum: 1, maximum: 10 },
+        },
+      },
+      WaitlistEntry: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          tierId: { type: 'string' },
+          quantity: { type: 'integer' },
+          status: { type: 'string', enum: ['waiting', 'offered', 'fulfilled', 'expired'] },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      WaitlistOffer: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          waitlistEntryId: { type: 'string' },
+          tierId: { type: 'string' },
+          quantity: { type: 'integer' },
+          status: { type: 'string', enum: ['active', 'accepted', 'expired'] },
+          createdAt: { type: 'string', format: 'date-time' },
+          expiresAt: { type: 'string', format: 'date-time' },
         },
       },
     },

@@ -5,7 +5,7 @@ import { Router } from '../src/http/router.js';
 import { registerApiRoutes } from '../src/http/routes.js';
 
 describe('OpenAPI document', () => {
-  const router = registerApiRoutes(new Router(), { eventService: {}, bookingService: {} });
+  const router = registerApiRoutes(new Router(), { eventService: {}, bookingService: {}, waitlistService: {} });
   router.get('/health', () => {});
 
   const operations = Object.entries(openApiDocument.paths).flatMap(([path, methods]) =>
@@ -21,17 +21,26 @@ describe('OpenAPI document', () => {
 
   it('documents every API route', () => {
     const expected = [
+      'POST /api/auth/signup',
+      'POST /api/auth/login',
+      'GET /api/auth/me',
       'GET /health',
       'POST /api/events',
       'GET /api/events',
+      'GET /api/events/mine',
       'GET /api/events/{id}',
       'POST /api/events/{id}/tiers',
       'POST /api/events/{id}/publish',
       'POST /api/events/{id}/unpublish',
       'POST /api/bookings',
+      'GET /api/bookings',
       'GET /api/bookings/{reference}',
       'POST /api/bookings/{reference}/pay',
       'POST /api/bookings/{reference}/cancel',
+      'GET /api/bookings/{reference}/refund-preview',
+      'POST /api/waitlist',
+      'GET /api/waitlist/offers',
+      'POST /api/waitlist/offers/{id}/accept',
     ];
     assert.deepEqual(operations.map(({ method, path }) => `${method} ${path}`).sort(), expected.sort());
   });

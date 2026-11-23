@@ -18,7 +18,9 @@ export const DECLINED_TOKEN = 'tok_declined';
 
 export function createMockPaymentGateway({ delayMs = 0 } = {}) {
   const chargesByKey = new Map();
+  const refundsByKey = new Map();
   let chargeCount = 0;
+  let refundCount = 0;
 
   return {
     async charge({ amountCents, paymentToken, idempotencyKey }) {
@@ -37,9 +39,24 @@ export function createMockPaymentGateway({ delayMs = 0 } = {}) {
       return result;
     },
 
-    // For tests: how many times money was actually taken.
+    async refund({ amountCents, idempotencyKey }) {
+      const previous = refundsByKey.get(idempotencyKey);
+      if (previous) return previous;
+      if (!Number.isSafeInteger(amountCents) || amountCents < 0) {
+        throw new TypeError('Refund amount must be a non-negative whole number of cents');
+      }
+      const refund = { status: 'succeeded', refundId: `rf_${newId()}`, amountCents };
+      refundsByKey.set(idempotencyKey, refund);
+      refundCount += 1;
+      return refund;
+    },
+
+    // For tests: counts of successful money movements.
     get chargeCount() {
       return chargeCount;
+    },
+    get refundCount() {
+      return refundCount;
     },
   };
 }

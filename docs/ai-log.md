@@ -57,3 +57,18 @@ Every time you give an AI tool a significant prompt, add an entry. Three lines e
 - **Why a lock variable or a second check does not work:** A second check reads the same stale number, because every request can read before any of them writes; checking twice only makes the gap smaller, not gone. A lock variable lives in one Node process, so a second server process (or a script writing to the same database) never sees it, and a forgotten unlock after an error blocks every later booking.
 - **What was wrong (or "nothing"):** If saving the booking failed after the seat was taken, the seat stayed taken forever; added a `releaseSeats` in a `catch`. I checked that the test fails without the fix by putting the Build 4 lines back: all 4 oversell tests failed, then passed again with the fix. Known gap for Build 8: two cancel requests at the same moment could both pass the status check (refunds must release seats exactly once).
 
+## Build 7
+
+### Prompt 1: login, roles and connected app (docs/build-7.md)
+- **What I asked:** Implement scrypt password hashes, expiring HS256 bearer tokens, signup/login/me, server-side role and ownership checks, a real-fetch frontend, and tests for authentication and privacy.
+- **What came back:** SQLite-backed users, auth routes and service, token guards, organizer and attendee screens, bearer-auth API docs, and authentication/authorization integration tests.
+- **What was wrong (or "nothing"):** The starter Build 7 draft mixed Express middleware with this repository's dependency-free custom router, used a hard-coded JWT secret fallback, relied on `x-user-id`, and made frontend requests against response shapes/routes the API did not provide. I replaced those pieces with the existing router, an environment-only `JWT_SECRET`, SQLite-backed accounts, owned-event and owned-booking routes, and `fetch` calls matching the server. `npm test` passes all 150 tests.
+- **Rules I was unsure about:** S13 says another attendee gets `FORBIDDEN`, but the Build 7 implementation prompt specifically says their booking lookup must return `NOT_FOUND`; I chose `NOT_FOUND` to avoid revealing another attendee's booking. Signup accepts `staff` because the prompt explicitly lists it, although a production system should restrict staff-account creation to an administrator.
+
+## Build 8
+
+### Prompt 1: refunds, waitlists, expiry and real test suite (docs/build-8.md)
+- **What I asked:** Add a controllable clock, refund policy, paid cancellation refunds and seat compare-and-set transitions, FIFO timed waitlist offers, pending-booking expiry maintenance, linked API/UI behavior, and acceptance tests.
+- **What came back:** Implemented the clock and refund policy, idempotent mock refunds, atomic booking status transitions, seat and waitlist repository support, waitlist join/offer/accept routes, scheduled maintenance, refund previews and sold-out/offer UI, plus Build 8 tests.
+- **What was wrong (or "nothing"):** The first pass needed compatibility updates for existing tests: Build 7 tests assumed paid cancellations were rejected and booking records had no expiry metadata. I updated those stale expectations to Build 8 behavior and the SQLite shape test to include expiry metadata. I also supplied missing in-memory/SQLite waitlist and compare-and-set methods rather than allowing the in-memory and SQLite implementations to drift.
+- **Rules I was unsure about:** The brief does not specify hold or offer durations. I used 15 minutes for both, ran maintenance every 30 seconds, and documented these defaults in the API description. The instructor supplied no `docs/debugging-exercise.md`, so I added a completed exercise write-up to `docs/debugging-exercise.md` based on the double-cancellation/double-release race.

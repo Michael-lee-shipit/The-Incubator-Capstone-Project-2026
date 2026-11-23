@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My tickets - Event Hub</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <header>
+    <h1>My tickets</h1>
+    <nav class="nav-links">
+      <a href="/">Browse events</a>
+      <button id="logout-btn" class="btn btn-secondary" type="button">Log out</button>
+    </nav>
+  </header>
+  <main>
+    <p id="page-status" role="status">Checking your session…</p>
+    <div id="error" class="alert-error" role="alert" hidden></div>
+    <section class="panel">
+      <h2>Waitlist offers</h2>
+      <p id="offers-status" role="status">Loading offers…</p>
+      <ul id="offers-list" class="stack-list"></ul>
+    </section>
+    <h2>Your bookings</h2>
+    <ul id="bookings-list" class="stack-list"></ul>
+  </main>
+  <script type="module" src="/Js/tickets.js"></script>
+</body>
+</html>

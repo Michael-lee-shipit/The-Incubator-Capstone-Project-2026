@@ -8,7 +8,7 @@ import { requireDate, requireText, requireWholeNumber } from '../domain/validati
 
 export function requireActor(actorId) {
   if (typeof actorId !== 'string' || actorId.trim() === '') {
-    throw new DomainError('UNAUTHENTICATED', 'Say who you are with the x-user-id header');
+    throw new DomainError('UNAUTHENTICATED', 'A valid bearer token is required');
   }
   return actorId.trim();
 }
@@ -106,6 +106,12 @@ export function createEventService({ repository }) {
         published.map(async (event) => summarizeEvent(event, await repository.listTiersForEvent(event.id))),
       );
       return searchEvents(summaries, criteria, sortBy);
+    },
+
+    async listOwnEvents(actorId) {
+      const organizerId = requireActor(actorId);
+      const events = (await repository.listEvents()).filter((event) => event.organizerId === organizerId);
+      return Promise.all(events.map(withTiers));
     },
   };
 }

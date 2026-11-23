@@ -1,139 +1,102 @@
-// public/js/pages/event.js
-import { getEvent, createBooking, payBooking } from '../api.js';
+import { api } from '../api.js';
+import { getAuthToken } from '../session.js';
 import { el, formatPrice } from '../ui.js';
 
 export async function initEvent() {
   const container = document.getElementById('event-detail-container');
-  const urlParams = new URLSearchParams(window.location.search);
-  const eventId = urlParams.get('id');
-
+  const status = document.getElementById('event-status');
+  const error = document.getElementById('event-error');
+  const eventId = new URLSearchParams(window.location.search).get('id');
   if (!eventId) {
-    container.textContent = 'Event not found.';
+    status.textContent = '';
+    error.textContent = 'Event not found.';
+    error.hidden = false;
     return;
   }
 
   try {
-    const { event } = await getEvent(eventId);
-    container.textContent = '';
+    const event = await api.getEvent(eventId);
+    status.textContent = '';
+    container.append(
+      el('h2', {}, [event.title]),
+      el('p', {}, [`${event.venue} · ${event.city} · ${new Date(event.startsAt).toLocaleString()}`]),
+      el('h3', {}, ['Ticket tiers']),
+    );
 
-    const titleEl = el('h2', {}, [event.title]);
-    const metaEl = el('p', { style: 'color: var(--text-muted);' }, [`📍 ${event.venue}, ${event.city} | 📅 ${new Date(event.date).toLocaleString()}`]);
-    
-    const tiersContainer = el('div', { style: 'margin-top: 1.5rem;' }, [el('h3', {}, ['Ticket Tiers'])]);
-
-    let activeBooking = null;
-    let timerInterval = null;
-    const checkoutArea = el('div', { style: 'margin-top: 2rem;' });
-
-    event.tiers.forEach(tier => {
-      const available = tier.capacity - tier.sold;
-      const isSoldOut = available <= 0;
-
-      const qtyInput = el('input', { 
-        type: 'number', 
-        min: '1', 
-        max: Math.min(10, available), 
-        value: '1', 
-        disabled: isSoldOut,
-        style: 'width: 60px; padding: 0.25rem;'
+    for (const tier of event.tiers) {
+      const soldOut = tier.seatsLeft < 1;
+      const quantity = el('input', {
+        type: 'number',
+        min: 1,
+        max: soldOut ? 10 : Math.min(10, tier.seatsLeft),
+        value: 1,
+        'aria-label': `Quantity for ${tier.name}`,
       });
-
-      const bookBtn = el('button', {
+      const bookButton = el('button', {
         className: 'btn',
-        disabled: isSoldOut,
-        onclick: async () => {
-          try {
-            const qty = parseInt(qtyInput.value, 10);
-            const res = await createBooking({ eventId: event.id, tierId: tier.id, quantity: qty });
-            activeBooking = res.booking;
-            startCheckoutFlow(activeBooking, tier, qty);
-          } catch (err) {
-            alert('Booking failed: ' + err.message);
-          }
-        }
-      }, [isSoldOut ? 'Sold Out' : 'Book Tickets']);
-
-      const tierRow = el('div', { className: 'tier-row' }, [
+        type: 'button',
+      }, [soldOut ? 'Join waitlist' : 'Book']);
+      const row = el('div', { className: 'tier-row' }, [
         el('div', {}, [
           el('strong', {}, [tier.name]),
-          el('span', { style: 'margin-left: 1rem; color: var(--text-muted);' }, [formatPrice(tier.price)]),
-          isSoldOut ? el('span', { className: 'badge-soldout', style: 'margin-left: 1rem;' }, ['Sold Out']) :
-                      el('span', { style: 'margin-left: 1rem; font-size: 0.85rem; color: var(--text-muted);' }, [`(${available} left)`])
+          el('span', {}, [` · ${formatPrice(tier.priceCents)} · ${tier.seatsLeft} left`]),
         ]),
-        el('div', { style: 'display: flex; gap: 0.5rem; align-items: center;' }, [
-          isSoldOut ? null : el('label', {}, [document.createTextNode('Qty '), qtyInput]),
-          bookBtn
-        ])
+        el('div', { className: 'nav-links' }, [quantity, bookButton]),
       ]);
-
-      tiersContainer.appendChild(tierRow);
-    });
-
-    function startCheckoutFlow(booking, tier, qty) {
-      if (timerInterval) clearInterval(timerInterval);
-      checkoutArea.textContent = '';
-
-      const timerSpan = el('span', { className: 'timer' }, ['05:00']);
-      const cardInput = el('input', { type: 'text', placeholder: 'Card Number (ends in 0000 to fail)', style: 'padding: 0.5rem; width: 250px;' });
-      const errorDiv = el('div', { style: 'display: none;' });
-
-      const payBtn = el('button', {
-        className: 'btn',
-        onclick: async () => {
-          errorDiv.style.display = 'none';
-          try {
-            await payBooking({ reference: booking.reference, cardNumber: cardInput.value });
-            clearInterval(timerInterval);
-            checkoutArea.textContent = '';
-            checkoutArea.appendChild(el('div', { style: 'background: rgba(34,197,94,0.1); border: 1px solid var(--success); padding: 1rem; border-radius: 4px; color: var(--success);' }, [
-              `🎉 Payment successful! Booking reference: ${booking.reference}. Seats confirmed.`
-            ]));
-          } catch (err) {
-            errorDiv.style.display = 'block';
-            errorDiv.className = 'alert-error';
-            errorDiv.textContent = err.message === 'PAYMENT_DECLINED' ? 'Card declined. Please try another card or check details.' : 'Payment error: ' + err.message;
-          }
-        }
-      }, [`Pay ${formatPrice(tier.price * qty)}`]);
-
-      const checkoutBox = el('div', { style: 'background: var(--card-bg); border: 1px solid var(--border); padding: 1.5rem; border-radius: 8px;' }, [
-        el('h3', {}, ['Checkout']),
-        el('p', {}, [`Holding ${qty} x ${tier.name} ticket(s) for ${event.title}. Total: ${formatPrice(tier.price * qty)}`]),
-        el('p', {}, [document.createTextNode('Time remaining to pay: '), timerSpan]),
-        errorDiv,
-        el('div', { style: 'display: flex; gap: 0.75rem; align-items: center; margin-top: 1rem;' }, [
-          el('label', {}, [document.createTextNode('Mock Card Number: '), cardInput]),
-          payBtn
-        ])
-      ]);
-
-      checkoutArea.appendChild(checkoutBox);
-
-      // Countdown timer logic
-      const updateTimer = () => {
-        const remaining = booking.expiresAt - Date.now();
-        if (remaining <= 0) {
-          clearInterval(timerInterval);
-          checkoutArea.textContent = '';
-          checkoutArea.appendChild(el('div', { className: 'alert-error' }, ['Booking session expired. Please select tickets again.']));
+      const checkout = el('div');
+      bookButton.addEventListener('click', async () => {
+        error.hidden = true;
+        if (!getAuthToken()) {
+          window.location.assign('/login.html');
           return;
         }
-        const mins = Math.floor(remaining / 60000);
-        const secs = Math.floor((remaining % 60000) / 1000);
-        timerSpan.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-      };
-
-      updateTimer();
-      timerInterval = setInterval(updateTimer, 1000);
+        bookButton.disabled = true;
+        bookButton.textContent = soldOut ? 'Joining…' : 'Booking…';
+        try {
+          if (soldOut) {
+            await api.joinWaitlist(tier.id, Number(quantity.value));
+            checkout.replaceChildren(
+              el('p', { className: 'success-message' }, ['You joined the waitlist for this ticket tier.']),
+            );
+            bookButton.textContent = 'Joined waitlist';
+            return;
+          }
+          const booking = await api.createBooking({ tierId: tier.id, quantity: Number(quantity.value) });
+          checkout.replaceChildren(
+            el('p', {}, [`Booking ${booking.reference} is pending. Total: ${formatPrice(booking.amountCents)}.`]),
+          );
+          const paymentToken = el('select', { 'aria-label': 'Mock payment result' }, [
+            el('option', { value: 'tok_success' }, ['Successful mock payment']),
+            el('option', { value: 'tok_declined' }, ['Declined mock payment']),
+          ]);
+          const payButton = el('button', { className: 'btn', type: 'button' }, ['Pay now']);
+          payButton.addEventListener('click', async () => {
+            payButton.disabled = true;
+            try {
+              const paid = await api.payBooking(booking.reference, paymentToken.value);
+              checkout.replaceChildren(
+                el('p', { className: 'success-message' }, [`Payment ${paid.status}. Reference: ${paid.reference}`]),
+                el('a', { href: '/tickets.html' }, ['View my tickets']),
+              );
+            } catch (requestError) {
+              error.textContent = requestError.message;
+              error.hidden = false;
+              payButton.disabled = false;
+            }
+          });
+          checkout.append(paymentToken, payButton);
+        } catch (requestError) {
+          error.textContent = requestError.message;
+          error.hidden = false;
+          bookButton.disabled = false;
+          bookButton.textContent = soldOut ? 'Join waitlist' : 'Book';
+        }
+      });
+      container.append(row, checkout);
     }
-
-    container.appendChild(titleEl);
-    container.appendChild(metaEl);
-    container.appendChild(tiersContainer);
-    container.appendChild(checkoutArea);
-
-  } catch (err) {
-    container.textContent = 'Failed to load event details.';
-    console.error(err);
+  } catch (requestError) {
+    status.textContent = '';
+    error.textContent = requestError.message;
+    error.hidden = false;
   }
 }

@@ -1,0 +1,123 @@
+batch_id: "BUILD-8"
+completed_tasks:
+  - "T001-controllable-clock"
+  - "T002-refund-policy"
+  - "T003-cancellation-cas"
+  - "T004-waitlist-offers"
+  - "T005-maintenance-expiry"
+  - "T006-build8-ui"
+  - "T007-build8-tests-docs"
+blocked_tasks: []
+files_changed:
+  T001-controllable-clock:
+    - file: "src/lib/clock.js"
+      change_type: "created"
+      description: "Added system and controllable clocks"
+  T002-refund-policy:
+    - file: "src/domain/refundPolicy.js"
+      change_type: "created"
+      description: "Added pure time-based refund policy"
+  T003-cancellation-cas:
+    - file: "src/services/bookingService.js"
+      change_type: "modified"
+      description: "Added refunds, preview, CAS cancellation and pending expiry"
+    - file: "src/lib/mockPaymentGateway.js"
+      change_type: "modified"
+      description: "Added idempotent mock refunds"
+    - file: "src/repositories/memory.js"
+      change_type: "modified"
+      description: "Added booking CAS and waitlist persistence"
+    - file: "src/repositories/sqlite.js"
+      change_type: "modified"
+      description: "Added booking CAS, expiry fields and waitlist persistence"
+  T004-waitlist-offers:
+    - file: "src/services/seatService.js"
+      change_type: "created"
+      description: "Added seat hold/release service"
+    - file: "src/services/waitlistService.js"
+      change_type: "created"
+      description: "Added FIFO waitlist join, offers and acceptance"
+  T005-maintenance-expiry:
+    - file: "src/jobs/maintenance.js"
+      change_type: "created"
+      description: "Added pending booking and offer maintenance job"
+    - file: "src/server.js"
+      change_type: "modified"
+      description: "Wired maintenance interval and Build 8 services"
+  T006-build8-ui:
+    - file: "public/Js/api.js"
+      change_type: "modified"
+      description: "Added refund, waitlist and offer API calls"
+    - file: "public/Js/pages/event.js"
+      change_type: "modified"
+      description: "Added sold-out join-waitlist behavior"
+    - file: "public/Js/tickets.js"
+      change_type: "modified"
+      description: "Added refund confirmation and waitlist countdown UI"
+    - file: "public/tickets.html"
+      change_type: "modified"
+      description: "Added waitlist offer section"
+  T007-build8-tests-docs:
+    - file: "test/build8.test.js"
+      change_type: "created"
+      description: "Added refund, cancellation, waitlist and expiry tests"
+    - file: "test/api.test.js"
+      change_type: "modified"
+      description: "Updated paid-cancellation acceptance expectation"
+    - file: "test/sqliteRepository.test.js"
+      change_type: "modified"
+      description: "Updated SQLite booking shape expectation"
+    - file: "test/openapi.test.js"
+      change_type: "modified"
+      description: "Updated route documentation contract"
+    - file: "src/http/routes.js"
+      change_type: "modified"
+      description: "Added refund, waitlist and offer routes"
+    - file: "src/http/openapi.js"
+      change_type: "modified"
+      description: "Documented Build 8 API and defaults"
+    - file: "src/http/app.js"
+      change_type: "modified"
+      description: "Mapped Build 8 domain errors to HTTP statuses"
+    - file: "src/db/schema.sql"
+      change_type: "modified"
+      description: "Added expiry/refund and waitlist tables"
+    - file: "src/db/connection.js"
+      change_type: "modified"
+      description: "Migrated existing SQLite booking columns"
+    - file: "docs/ai-log.md"
+      change_type: "modified"
+      description: "Added Build 8 implementation log"
+    - file: "docs/debugging-exercise.md"
+      change_type: "created"
+      description: "Documented cancellation race debugging exercise"
+traceability:
+  - requirement: "S09"
+    plan_item: "refund-cancellation"
+    task: "T002,T003"
+    files: ["src/domain/refundPolicy.js", "src/services/bookingService.js", "src/lib/mockPaymentGateway.js"]
+    status: "completed"
+  - requirement: "S10"
+    plan_item: "pending-expiry"
+    task: "T005"
+    files: ["src/jobs/maintenance.js", "src/services/bookingService.js"]
+    status: "completed"
+  - requirement: "S11-S12"
+    plan_item: "waitlist-fifo-offers"
+    task: "T004"
+    files: ["src/services/waitlistService.js", "src/services/seatService.js", "src/repositories/memory.js", "src/repositories/sqlite.js"]
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - severity: MEDIUM
+    message: "Hold and offer duration defaults of 15 minutes were not specified by the prompt and are documented as assumptions."
+  - severity: MEDIUM
+    message: "The supplied workspace has no debugging-exercise handout, so the exercise write-up is based on the double-cancellation race."
+test_results:
+  BUILD-8:
+    command: "npm test"
+    passed: 156
+    failed: 0
+    skipped: 0
+    failures: []

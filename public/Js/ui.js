@@ -2,12 +2,15 @@
 
 export function el(tag, props = {}, children = []) {
   const element = document.createElement(tag);
+  const booleanAttributes = new Set(['disabled', 'hidden', 'required', 'checked', 'selected']);
 
   for (const [key, value] of Object.entries(props)) {
     if (key === "className") {
       element.className = value;
     } else if (key.startsWith("on") && typeof value === "function") {
       element.addEventListener(key.slice(2).toLowerCase(), value);
+    } else if (booleanAttributes.has(key)) {
+      element.toggleAttribute(key, Boolean(value));
     } else if (value !== null && value !== undefined) {
       element.setAttribute(key, value);
     }

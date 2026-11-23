@@ -1,83 +1,88 @@
-// public/js/api.js
-import { mockDatabase } from './mockData.js';
+import { clearSession, getAuthToken } from './session.js';
 
-export async function listEvents(filters = {}) {
-  await new Promise(r => setTimeout(r, 150)); // simulate network latency
-  let result = mockDatabase.events.filter(e => e.published);
+const API_BASE = '/api';
 
-  if (filters.search) {
-    const q = filters.search.toLowerCase();
-    result = result.filter(e => e.title.toLowerCase().includes(q) || e.venue.toLowerCase().includes(q));
-  }
-  if (filters.city) {
-    result = result.filter(e => e.city.toLowerCase() === filters.city.toLowerCase());
-  }
-  if (filters.maxPrice) {
-    const max = Number(filters.maxPrice);
-    result = result.filter(e => e.tiers.some(t => t.price <= max));
-  }
-  if (filters.sort === 'date') {
-    result.sort((a, b) => new Date(a.date) - new Date(b.date));
-  } else if (filters.sort === 'price') {
-    result.sort((a, b) => Math.min(...a.tiers.map(t => t.price)) - Math.min(...b.tiers.map(t => t.price)));
+async function request(endpoint, options = {}) {
+  const { unauthenticated = false, ...fetchOptions } = options;
+  const headers = new Headers(fetchOptions.headers);
+  if (fetchOptions.body !== undefined) headers.set('content-type', 'application/json');
+
+  const token = getAuthToken();
+  if (token && !unauthenticated) headers.set('authorization', `Bearer ${token}`);
+
+  const response = await fetch(`${API_BASE}${endpoint}`, { ...fetchOptions, headers });
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('The server returned an invalid response');
   }
 
-  return { events: result };
-}
-
-export async function getEvent(id) {
-  await new Promise(r => setTimeout(r, 100));
-  const event = mockDatabase.events.find(e => e.id === id);
-  if (!event) throw new Error("EVENT_NOT_FOUND");
-  return { event };
-}
-
-export async function createBooking({ eventId, tierId, quantity }) {
-  await new Promise(r => setTimeout(r, 200));
-  const event = mockDatabase.events.find(e => e.id === eventId);
-  if (!event) throw new Error("EVENT_NOT_FOUND");
-  const tier = event.tiers.find(t => t.id === tierId);
-  if (!tier) throw new Error("TIER_NOT_FOUND");
-
-  const available = tier.capacity - tier.sold;
-  if (quantity > available) throw new Error("SOLD_OUT");
-
-  const reference = "BK-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-  const booking = {
-    reference,
-    eventId,
-    tierId,
-    quantity,
-    status: "pending",
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes hold
-  };
-
-  mockDatabase.bookings.push(booking);
-  return { booking };
-}
-
-export async function payBooking({ reference, cardNumber }) {
-  await new Promise(r => setTimeout(r, 300));
-  const booking = mockDatabase.bookings.find(b => b.reference === reference);
-  if (!booking) throw new Error("BOOKING_NOT_FOUND");
-  if (booking.status !== "pending") throw new Error("INVALID_TRANSITION");
-
-  // Mock card logic: if card ends in '0000', simulate decline
-  if (cardNumber && cardNumber.endsWith("0000")) {
-    throw new Error("PAYMENT_DECLINED");
-  }
-
-  booking.status = "paid";
-  
-  // Update sold count
-  const event = mockDatabase.events.find(e => e.id === booking.eventId);
-  if (event) {
-    const tier = event.tiers.find(t => t.id === booking.tierId);
-    if (tier) {
-      tier.sold += booking.quantity;
+  if (!response.ok) {
+    const error = new Error(data.error?.message ?? 'The request failed');
+    error.code = data.error?.code ?? 'UNKNOWN_ERROR';
+    error.status = response.status;
+    if (response.status === 401 && !unauthenticated) {
+      clearSession();
+      window.location.assign('/login.html');
     }
+    throw error;
   }
+  return data;
+}
 
-  return { booking, payment: { status: "success", chargedAt: new Date().toISOString() } };
+const jsonRequest = (method, body) => ({ method, body: JSON.stringify(body) });
+
+export const api = {
+  signup: (credentials) => request('/auth/signup', { ...jsonRequest('POST', credentials), unauthenticated: true }),
+  login: (credentials) => request('/auth/login', { ...jsonRequest('POST', credentials), unauthenticated: true }),
+  getMe: () => request('/auth/me'),
+
+  getEvents(filters = {}) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+    }
+    return request(`/events${query.size ? `?${query}` : ''}`);
+  },
+  getEvent: (id) => request(`/events/${encodeURIComponent(id)}`),
+  getMyEvents: () => request('/events/mine'),
+  createEvent: (eventData) => request('/events', jsonRequest('POST', eventData)),
+  publishEvent: (id) => request(`/events/${encodeURIComponent(id)}/publish`, { method: 'POST' }),
+  unpublishEvent: (id) => request(`/events/${encodeURIComponent(id)}/unpublish`, { method: 'POST' }),
+
+  addTier: (eventId, tierData) =>
+    request(`/events/${encodeURIComponent(eventId)}/tiers`, jsonRequest('POST', tierData)),
+
+  getBookings: () => request('/bookings'),
+  createBooking: (bookingData) => request('/bookings', jsonRequest('POST', bookingData)),
+  payBooking: (reference, paymentToken) =>
+    request(`/bookings/${encodeURIComponent(reference)}/pay`, jsonRequest('POST', { paymentToken })),
+  cancelBooking: (reference) =>
+    request(`/bookings/${encodeURIComponent(reference)}/cancel`, { method: 'POST' }),
+  previewRefund: (reference) =>
+    request(`/bookings/${encodeURIComponent(reference)}/refund-preview`),
+  joinWaitlist: (tierId, quantity) =>
+    request('/waitlist', jsonRequest('POST', { tierId, quantity })),
+  getWaitlistOffers: () => request('/waitlist/offers'),
+  acceptWaitlistOffer: (id) =>
+    request(`/waitlist/offers/${encodeURIComponent(id)}/accept`, { method: 'POST' }),
+};
+
+export async function requireSession(role) {
+  if (!getAuthToken()) {
+    window.location.assign('/login.html');
+    return null;
+  }
+  try {
+    const { user } = await api.getMe();
+    if (role && user.role !== role) {
+      window.location.assign(user.role === 'organizer' ? '/organizer.html' : '/tickets.html');
+      return null;
+    }
+    return user;
+  } catch (error) {
+    if (error.status !== 401) throw error;
+    return null;
+  }
 }

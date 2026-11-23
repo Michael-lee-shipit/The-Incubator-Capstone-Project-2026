@@ -12,8 +12,30 @@ export function createMemoryRepository() {
   const events = new Map(); // eventId -> event
   const tiers = new Map(); // tierId -> tier
   const bookings = new Map(); // reference -> booking  (O(1) lookup by reference)
+  const users = new Map(); // userId -> user
+  const userIdsByEmail = new Map(); // normalized email -> userId
+  const waitlistEntries = new Map();
+  const waitlistOffers = new Map();
 
   return {
+    async createUser(user) {
+      if (userIdsByEmail.has(user.email)) {
+        const error = new Error('UNIQUE constraint failed: users.email');
+        error.code = 'ERR_SQLITE_CONSTRAINT_UNIQUE';
+        throw error;
+      }
+      users.set(user.id, copy(user));
+      userIdsByEmail.set(user.email, user.id);
+      return copy(user);
+    },
+    async findUserByEmail(email) {
+      const id = userIdsByEmail.get(email);
+      return copy(users.get(id));
+    },
+    async findUserById(id) {
+      return copy(users.get(id));
+    },
+
     async insertEvent(event) {
       events.set(event.id, copy(event));
       return copy(event);
@@ -67,9 +89,82 @@ export function createMemoryRepository() {
     async findBookingByReference(reference) {
       return copy(bookings.get(reference));
     },
+    async listBookingsByUser(userId) {
+      return [...bookings.values()].filter((booking) => booking.userId === userId).map(copy);
+    },
     async updateBooking(booking) {
       bookings.set(booking.reference, copy(booking));
       return copy(booking);
+    },
+    async compareAndSetBookingStatus(reference, expectedStatus, booking) {
+      const current = bookings.get(reference);
+      if (!current || current.status !== expectedStatus) return null;
+      bookings.set(reference, copy(booking));
+      return copy(booking);
+    },
+    async listPendingBookingsToExpire(now, fallbackCutoff) {
+      return [...bookings.values()]
+        .filter((booking) => booking.status === 'pending')
+        .filter((booking) =>
+          booking.expiresAt ? booking.expiresAt <= now : booking.createdAt <= fallbackCutoff,
+        )
+        .map(copy);
+    },
+
+    async createWaitlistEntry(entry) {
+      waitlistEntries.set(entry.id, copy(entry));
+      return copy(entry);
+    },
+    async findCurrentWaitlistEntry(tierId, userId) {
+      return copy(
+        [...waitlistEntries.values()].find(
+          (entry) =>
+            entry.tierId === tierId &&
+            entry.userId === userId &&
+            ['waiting', 'offered'].includes(entry.status),
+        ),
+      );
+    },
+    async listWaitingEntriesForTier(tierId) {
+      return [...waitlistEntries.values()]
+        .filter((entry) => entry.tierId === tierId && entry.status === 'waiting')
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map(copy);
+    },
+    async compareAndSetWaitlistStatus(id, expectedStatus, status) {
+      const entry = waitlistEntries.get(id);
+      if (!entry || entry.status !== expectedStatus) return null;
+      const updated = { ...entry, status };
+      waitlistEntries.set(id, updated);
+      return copy(updated);
+    },
+    async createWaitlistOffer(offer) {
+      waitlistOffers.set(offer.id, copy(offer));
+      return copy(offer);
+    },
+    async findWaitlistOffer(id) {
+      return copy(waitlistOffers.get(id));
+    },
+    async findActiveOfferForTier(tierId) {
+      return copy([...waitlistOffers.values()].find((offer) => offer.tierId === tierId && offer.status === 'active'));
+    },
+    async listActiveOffersForUser(userId) {
+      return [...waitlistOffers.values()]
+        .filter((offer) => offer.userId === userId && offer.status === 'active')
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .map(copy);
+    },
+    async listExpiredActiveOffers(before) {
+      return [...waitlistOffers.values()]
+        .filter((offer) => offer.status === 'active' && offer.expiresAt <= before)
+        .map(copy);
+    },
+    async compareAndSetOfferStatus(id, expectedStatus, status, extra = {}) {
+      const offer = waitlistOffers.get(id);
+      if (!offer || offer.status !== expectedStatus) return null;
+      const updated = { ...offer, ...extra, status };
+      waitlistOffers.set(id, updated);
+      return copy(updated);
     },
 
     close() {},

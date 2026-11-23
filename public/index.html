@@ -8,7 +8,12 @@
 <body>
   <header>
     <h1>🎟️ Event Hub</h1>
-    <a href="docs.html" class="btn" style="background: transparent; border: 1px solid var(--border);">API Docs</a>
+    <nav class="nav-links">
+      <a href="/login.html">Log in / Sign up</a>
+      <a href="/tickets.html">My tickets</a>
+      <a href="/organizer.html">Organizer</a>
+      <a href="/docs.html">API docs</a>
+    </nav>
   </header>
   <main>
     <h2>Upcoming Events</h2>
@@ -32,13 +37,16 @@
           <option value="">Default</option>
           <option value="date">Date</option>
           <option value="price">Price (Low to High)</option>
+          <option value="availability">Availability</option>
         </select>
       </label>
     </div>
-    <div id="events-container">Loading...</div>
+    <p id="events-status" role="status">Loading events…</p>
+    <div id="events-error" class="alert-error" role="alert" hidden></div>
+    <div id="events-container" class="events-grid"></div>
   </main>
   <script type="module">
-    import { initHome } from './js/pages/home.js';
+    import { initHome } from './Js/pages/home.js';
     initHome();
   </script>
 </body>

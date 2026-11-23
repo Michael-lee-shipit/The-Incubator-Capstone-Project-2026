@@ -1,0 +1,52 @@
+metadata:
+  generated: "2026-11-23"
+  source_tasks: "docs/build-8.md"
+  last_updated: "2026-11-23"
+summary:
+  total_tasks: 7
+  completed_tasks: 7
+  in_progress_tasks: 0
+  pending_tasks: 0
+  completion_percentage: 100.0
+tasks:
+  - task_id: "T001"
+    description: "Add controllable clock"
+    status: "completed"
+  - task_id: "T002"
+    description: "Implement pure refund policy"
+    status: "completed"
+  - task_id: "T003"
+    description: "Implement compare-and-set paid cancellation and refunds"
+    status: "completed"
+  - task_id: "T004"
+    description: "Implement FIFO waitlist and timed offers"
+    status: "completed"
+  - task_id: "T005"
+    description: "Implement hold expiry maintenance"
+    status: "completed"
+  - task_id: "T006"
+    description: "Update cancellation and waitlist UI"
+    status: "completed"
+  - task_id: "T007"
+    description: "Add tests, API docs and debugging write-up"
+    status: "completed"
+pending_tasks: []
+untracked_changes: []
+traceability_chain:
+  - chain_id: "BUILD8-S09"
+    requirement: "S09"
+    tasks: ["T002", "T003"]
+    status: "complete"
+  - chain_id: "BUILD8-S10"
+    requirement: "S10"
+    tasks: ["T005"]
+    status: "complete"
+  - chain_id: "BUILD8-S11-S12"
+    requirement: "S11-S12"
+    tasks: ["T004"]
+    status: "complete"
+validation:
+  passed: true
+  errors: []
+  warnings:
+    - "Hold and offer duration defaults are 15 minutes because the prompt did not specify durations."

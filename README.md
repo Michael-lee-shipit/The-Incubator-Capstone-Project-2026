@@ -154,15 +154,25 @@ scripts/           things you run by hand
 docs/              milestones, user stories and API examples
 ```
 
-## Build 4: try the API
+## Run the API
 
-```bash
+Build 7 and later require a private token-signing secret. Set it before
+starting the server (use a long, random value and never commit it):
+
+```powershell
+$env:JWT_SECRET = "replace-with-a-long-random-secret"
 npm start
 ```
 
+On macOS/Linux, use `export JWT_SECRET="replace-with-a-long-random-secret"`
+before `npm start`.
+
 Open http://localhost:3000/docs for the API docs. Every route, its inputs and its errors are listed there, and you can send test requests from the page. The page is built from the OpenAPI document in `src/http/openapi.js`, served at `/openapi.json`, so change that file whenever you change a route.
 
-To use Hoppscotch, import `docs/hoppscotch/build-4.collection.json` (Collections, then Import, then Hoppscotch) and `docs/hoppscotch/local.environment.json` (Environments, then Import), select the environment, and run the folders in order. Each request saves the ids that the next one needs. You can also import `docs/openapi.json` into Hoppscotch, Postman or Insomnia; regenerate it with `npm run export:openapi`.
+For Hoppscotch, Postman or Insomnia, import `docs/openapi.json`; regenerate it
+after API changes with `npm run export:openapi`. The saved Hoppscotch Build 4
+collection is a historical snapshot; use `/docs` or the Build 7 flow in
+[docs/api-examples.md](docs/api-examples.md) with the current API.
 
 For a walkthrough in the terminal, follow [docs/api-examples.md](docs/api-examples.md): every call, with `curl`, in the order create, publish, book, pay.
 

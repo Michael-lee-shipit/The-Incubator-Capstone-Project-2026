@@ -3,18 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <title>Event Details & Booking</title>
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
   <header>
     <h1>🎟️ Event Hub</h1>
-    <a href="index.html" class="btn" style="background: transparent; border: 1px solid var(--border);">← Back to Events</a>
+    <nav class="nav-links">
+      <a href="/">Browse events</a>
+      <a href="/login.html">Log in</a>
+    </nav>
   </header>
   <main>
-    <div id="event-detail-container">Loading event details...</div>
+    <p id="event-status" role="status">Loading event details…</p>
+    <div id="event-error" class="alert-error" role="alert" hidden></div>
+    <div id="event-detail-container"></div>
   </main>
   <script type="module">
-    import { initEvent } from './js/pages/event.js';
+    import { initEvent } from './Js/pages/event.js';
     initEvent();
   </script>
 </body>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Organizer dashboard - Event Hub</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Organizer dashboard</h1>
+    <nav class="nav-links">
+      <a href="/">Browse events</a>
+      <button id="logout-btn" class="btn btn-secondary" type="button">Log out</button>
+    </nav>
+  </header>
+  <main>
+    <p id="page-status" role="status">Checking your session…</p>
+    <div id="error" class="alert-error" role="alert" hidden></div>
+    <section class="panel">
+      <h2>Create an event</h2>
+      <form id="create-event-form" class="form-grid">
+        <label>Title <input id="title" name="title" required maxlength="120"></label>
+        <label>City <input id="city" name="city" required maxlength="100"></label>
+        <label>Venue <input id="venue" name="venue" required maxlength="160"></label>
+        <label>Starts at <input id="starts-at" name="startsAt" type="datetime-local" required></label>
+        <button id="create-event-button" class="btn" type="submit">Create draft</button>
+      </form>
+    </section>
+    <section>
+      <h2>Your events</h2>
+      <p id="events-loading" role="status"></p>
+      <div id="events-list" class="stack-list"></div>
+    </section>
+  </main>
+  <script type="module" src="/Js/organizer.js"></script>
+</body>
+</html>
