@@ -24,19 +24,18 @@ export async function initEvent() {
     );
 
     for (const tier of event.tiers) {
+      const soldOut = tier.seatsLeft < 1;
       const quantity = el('input', {
         type: 'number',
         min: 1,
-        max: Math.min(10, tier.seatsLeft),
-        value: tier.seatsLeft > 0 ? 1 : 0,
-        disabled: tier.seatsLeft < 1,
+        max: soldOut ? 10 : Math.min(10, tier.seatsLeft),
+        value: 1,
         'aria-label': `Quantity for ${tier.name}`,
       });
       const bookButton = el('button', {
         className: 'btn',
         type: 'button',
-        disabled: tier.seatsLeft < 1,
-      }, [tier.seatsLeft ? 'Book' : 'Sold out']);
+      }, [soldOut ? 'Join waitlist' : 'Book']);
       const row = el('div', { className: 'tier-row' }, [
         el('div', {}, [
           el('strong', {}, [tier.name]),
@@ -52,8 +51,16 @@ export async function initEvent() {
           return;
         }
         bookButton.disabled = true;
-        bookButton.textContent = 'Booking…';
+        bookButton.textContent = soldOut ? 'Joining…' : 'Booking…';
         try {
+          if (soldOut) {
+            await api.joinWaitlist(tier.id, Number(quantity.value));
+            checkout.replaceChildren(
+              el('p', { className: 'success-message' }, ['You joined the waitlist for this ticket tier.']),
+            );
+            bookButton.textContent = 'Joined waitlist';
+            return;
+          }
           const booking = await api.createBooking({ tierId: tier.id, quantity: Number(quantity.value) });
           checkout.replaceChildren(
             el('p', {}, [`Booking ${booking.reference} is pending. Total: ${formatPrice(booking.amountCents)}.`]),
@@ -82,7 +89,7 @@ export async function initEvent() {
           error.textContent = requestError.message;
           error.hidden = false;
           bookButton.disabled = false;
-          bookButton.textContent = 'Book';
+          bookButton.textContent = soldOut ? 'Join waitlist' : 'Book';
         }
       });
       container.append(row, checkout);

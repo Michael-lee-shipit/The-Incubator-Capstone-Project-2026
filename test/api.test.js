@@ -366,11 +366,13 @@ for (const [name, makeRepository] of Object.entries(REPOSITORIES)) {
         assert.equal((await call('GET', `/api/events/${event.id}`)).body.tiers[0].seatsLeft, 3);
       });
 
-      it('refuses to cancel a paid booking for now, and a booking twice', async () => {
+      it('cancels a paid booking once and cancels a booking twice only once', async () => {
         const { tier } = await publishedEventWithTier({ capacity: 3 });
         const paid = (await book(ADA, tier.id, 1)).body;
         await pay(ADA, paid.reference);
-        assertError(await call('POST', `/api/bookings/${paid.reference}/cancel`, { user: ADA }), 409, 'INVALID_STATE');
+        const paidCancellation = await call('POST', `/api/bookings/${paid.reference}/cancel`, { user: ADA });
+        assert.equal(paidCancellation.status, 200);
+        assert.ok(['cancelled', 'refunded'].includes(paidCancellation.body.status));
 
         const pending = (await book(ADA, tier.id, 1)).body;
         await call('POST', `/api/bookings/${pending.reference}/cancel`, { user: ADA });

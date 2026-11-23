@@ -60,6 +60,13 @@ export const api = {
     request(`/bookings/${encodeURIComponent(reference)}/pay`, jsonRequest('POST', { paymentToken })),
   cancelBooking: (reference) =>
     request(`/bookings/${encodeURIComponent(reference)}/cancel`, { method: 'POST' }),
+  previewRefund: (reference) =>
+    request(`/bookings/${encodeURIComponent(reference)}/refund-preview`),
+  joinWaitlist: (tierId, quantity) =>
+    request('/waitlist', jsonRequest('POST', { tierId, quantity })),
+  getWaitlistOffers: () => request('/waitlist/offers'),
+  acceptWaitlistOffer: (id) =>
+    request(`/waitlist/offers/${encodeURIComponent(id)}/accept`, { method: 'POST' }),
 };
 
 export async function requireSession(role) {

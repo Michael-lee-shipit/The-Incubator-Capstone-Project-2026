@@ -19,7 +19,7 @@ function searchCriteria(query) {
   };
 }
 
-export function registerApiRoutes(router, { eventService, bookingService, authService }) {
+export function registerApiRoutes(router, { eventService, bookingService, authService, waitlistService }) {
   registerAuthRoutes(router, { authService });
   router.get('/openapi.json', () => ({ status: 200, body: openApiDocument }));
 
@@ -81,6 +81,26 @@ export function registerApiRoutes(router, { eventService, bookingService, authSe
   router.post('/api/bookings/:reference/cancel', async ({ request, params }) => {
     const user = requireRole(requireUser(request), 'attendee');
     return { status: 200, body: await bookingService.cancel(user.id, params.reference) };
+  });
+
+  router.get('/api/bookings/:reference/refund-preview', async ({ request, params }) => {
+    const user = requireRole(requireUser(request), 'attendee');
+    return { status: 200, body: await bookingService.previewRefund(user.id, params.reference) };
+  });
+
+  router.post('/api/waitlist', async ({ request, body }) => {
+    const user = requireRole(requireUser(request), 'attendee');
+    return { status: 201, body: await waitlistService.join(user.id, body) };
+  });
+
+  router.get('/api/waitlist/offers', async ({ request }) => {
+    const user = requireRole(requireUser(request), 'attendee');
+    return { status: 200, body: { offers: await waitlistService.listOffers(user.id) } };
+  });
+
+  router.post('/api/waitlist/offers/:id/accept', async ({ request, params }) => {
+    const user = requireRole(requireUser(request), 'attendee');
+    return { status: 200, body: await waitlistService.accept(user.id, params.id) };
   });
 
   return router;

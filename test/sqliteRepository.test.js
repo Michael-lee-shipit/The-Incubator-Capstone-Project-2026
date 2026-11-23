@@ -58,7 +58,7 @@ describe('SQLite repository', () => {
     const booking = await bookings.book('ada', { tierId: tier.id, quantity: 1 });
     const stored = await repository.findBookingByReference(booking.reference);
     assert.deepEqual(Object.keys(stored).sort(), [
-      'amountCents', 'createdAt', 'eventId', 'id', 'quantity', 'reference', 'status', 'tierId', 'userId',
+      'amountCents', 'createdAt', 'eventId', 'expiresAt', 'id', 'quantity', 'reference', 'status', 'tierId', 'userId',
     ]);
     assert.equal(await repository.findTier('missing'), undefined);
     repository.close();

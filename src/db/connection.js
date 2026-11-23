@@ -29,5 +29,17 @@ export function openDatabase(path = MEMORY) {
   if (!userColumns.some((column) => column.name === 'password_hash')) {
     db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
   }
+  const bookingColumns = db.prepare('PRAGMA table_info(bookings)').all();
+  const existingBookingColumns = new Set(bookingColumns.map((column) => column.name));
+  for (const [name, declaration] of [
+    ['expires_at', 'TEXT'],
+    ['expired_at', 'TEXT'],
+    ['refund_amount_cents', 'INTEGER'],
+    ['refunded_at', 'TEXT'],
+  ]) {
+    if (!existingBookingColumns.has(name)) {
+      db.exec(`ALTER TABLE bookings ADD COLUMN ${name} ${declaration}`);
+    }
+  }
   return db;
 }

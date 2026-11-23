@@ -5,7 +5,7 @@ import { Router } from '../src/http/router.js';
 import { registerApiRoutes } from '../src/http/routes.js';
 
 describe('OpenAPI document', () => {
-  const router = registerApiRoutes(new Router(), { eventService: {}, bookingService: {} });
+  const router = registerApiRoutes(new Router(), { eventService: {}, bookingService: {}, waitlistService: {} });
   router.get('/health', () => {});
 
   const operations = Object.entries(openApiDocument.paths).flatMap(([path, methods]) =>
@@ -37,6 +37,10 @@ describe('OpenAPI document', () => {
       'GET /api/bookings/{reference}',
       'POST /api/bookings/{reference}/pay',
       'POST /api/bookings/{reference}/cancel',
+      'GET /api/bookings/{reference}/refund-preview',
+      'POST /api/waitlist',
+      'GET /api/waitlist/offers',
+      'POST /api/waitlist/offers/{id}/accept',
     ];
     assert.deepEqual(operations.map(({ method, path }) => `${method} ${path}`).sort(), expected.sort());
   });

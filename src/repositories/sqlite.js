@@ -47,8 +47,37 @@ const toBooking = (row) =>
     status: row.status,
     chargeId: row.charge_id,
     createdAt: row.created_at,
+    expiresAt: row.expires_at,
     paidAt: row.paid_at,
     cancelledAt: row.cancelled_at,
+    expiredAt: row.expired_at,
+    refundAmountCents: row.refund_amount_cents,
+    refundedAt: row.refunded_at,
+  });
+
+const toWaitlistEntry = (row) =>
+  row && {
+    id: row.id,
+    tierId: row.tier_id,
+    userId: row.user_id,
+    quantity: row.quantity,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+
+const toWaitlistOffer = (row) =>
+  row &&
+  withoutNulls({
+    id: row.id,
+    waitlistEntryId: row.waitlist_entry_id,
+    userId: row.user_id,
+    tierId: row.tier_id,
+    quantity: row.quantity,
+    status: row.status,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    acceptedAt: row.accepted_at,
+    expiredAt: row.expired_at,
   });
 
 const toUser = (row) =>
@@ -101,14 +130,62 @@ export function createSqliteRepository({ path, db = openDatabase(path) } = {}) {
 
     insertBooking: db.prepare(
       `INSERT INTO bookings (id, reference, user_id, event_id, tier_id, quantity, amount_cents,
-                             status, charge_id, created_at, paid_at, cancelled_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                             status, charge_id, created_at, expires_at, paid_at, cancelled_at,
+                             expired_at, refund_amount_cents, refunded_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     findBookingByReference: db.prepare('SELECT * FROM bookings WHERE reference = ?'),
     listBookingsByUser: db.prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY rowid DESC'),
     updateBooking: db.prepare(
-      `UPDATE bookings SET status = ?, charge_id = ?, paid_at = ?, cancelled_at = ?
+      `UPDATE bookings SET status = ?, charge_id = ?, paid_at = ?, cancelled_at = ?, expires_at = ?,
+                           expired_at = ?, refund_amount_cents = ?, refunded_at = ?
        WHERE reference = ?`,
+    ),
+    compareAndSetBookingStatus: db.prepare(
+      `UPDATE bookings SET status = ?, charge_id = ?, paid_at = ?, cancelled_at = ?, expires_at = ?,
+                           expired_at = ?, refund_amount_cents = ?, refunded_at = ?
+       WHERE reference = ? AND status = ?`,
+    ),
+    listPendingBookingsToExpire: db.prepare(
+      `SELECT * FROM bookings
+       WHERE status = 'pending'
+         AND ((expires_at IS NOT NULL AND expires_at <= ?)
+           OR (expires_at IS NULL AND created_at <= ?))
+       ORDER BY created_at`,
+    ),
+    insertWaitlistEntry: db.prepare(
+      `INSERT INTO waitlist_entries (id, tier_id, user_id, quantity, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ),
+    findCurrentWaitlistEntry: db.prepare(
+      `SELECT * FROM waitlist_entries
+       WHERE tier_id = ? AND user_id = ? AND status IN ('waiting', 'offered')
+       ORDER BY created_at LIMIT 1`,
+    ),
+    listWaitingEntriesForTier: db.prepare(
+      `SELECT * FROM waitlist_entries WHERE tier_id = ? AND status = 'waiting' ORDER BY created_at, rowid`,
+    ),
+    compareAndSetWaitlistStatus: db.prepare(
+      `UPDATE waitlist_entries SET status = ? WHERE id = ? AND status = ?`,
+    ),
+    insertWaitlistOffer: db.prepare(
+      `INSERT INTO waitlist_offers
+         (id, waitlist_entry_id, user_id, tier_id, quantity, status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    findWaitlistOffer: db.prepare('SELECT * FROM waitlist_offers WHERE id = ?'),
+    findActiveOfferForTier: db.prepare(
+      `SELECT * FROM waitlist_offers WHERE tier_id = ? AND status = 'active' ORDER BY created_at LIMIT 1`,
+    ),
+    listActiveOffersForUser: db.prepare(
+      `SELECT * FROM waitlist_offers WHERE user_id = ? AND status = 'active' ORDER BY created_at`,
+    ),
+    listExpiredActiveOffers: db.prepare(
+      `SELECT * FROM waitlist_offers WHERE status = 'active' AND expires_at <= ? ORDER BY expires_at`,
+    ),
+    compareAndSetOfferStatus: db.prepare(
+      `UPDATE waitlist_offers SET status = ?, accepted_at = ?, expired_at = ?
+       WHERE id = ? AND status = ?`,
     ),
   };
 
@@ -189,8 +266,12 @@ export function createSqliteRepository({ path, db = openDatabase(path) } = {}) {
         booking.status,
         booking.chargeId ?? null,
         booking.createdAt,
+        booking.expiresAt ?? null,
         booking.paidAt ?? null,
         booking.cancelledAt ?? null,
+        booking.expiredAt ?? null,
+        booking.refundAmountCents ?? null,
+        booking.refundedAt ?? null,
       );
       return findBooking(booking.reference);
     },
@@ -206,9 +287,91 @@ export function createSqliteRepository({ path, db = openDatabase(path) } = {}) {
         booking.chargeId ?? null,
         booking.paidAt ?? null,
         booking.cancelledAt ?? null,
+        booking.expiresAt ?? null,
+        booking.expiredAt ?? null,
+        booking.refundAmountCents ?? null,
+        booking.refundedAt ?? null,
         booking.reference,
       );
       return findBooking(booking.reference);
+    },
+    async compareAndSetBookingStatus(reference, expectedStatus, booking) {
+      const result = sql.compareAndSetBookingStatus.run(
+        booking.status,
+        booking.chargeId ?? null,
+        booking.paidAt ?? null,
+        booking.cancelledAt ?? null,
+        booking.expiresAt ?? null,
+        booking.expiredAt ?? null,
+        booking.refundAmountCents ?? null,
+        booking.refundedAt ?? null,
+        reference,
+        expectedStatus,
+      );
+      return result.changes === 1 ? findBooking(reference) : null;
+    },
+    async listPendingBookingsToExpire(now, fallbackCutoff) {
+      return sql.listPendingBookingsToExpire.all(now, fallbackCutoff).map(toBooking);
+    },
+
+    async createWaitlistEntry(entry) {
+      sql.insertWaitlistEntry.run(
+        entry.id,
+        entry.tierId,
+        entry.userId,
+        entry.quantity,
+        entry.status,
+        entry.createdAt,
+      );
+      return toWaitlistEntry(
+        db.prepare('SELECT * FROM waitlist_entries WHERE id = ?').get(entry.id),
+      );
+    },
+    async findCurrentWaitlistEntry(tierId, userId) {
+      return toWaitlistEntry(sql.findCurrentWaitlistEntry.get(tierId, userId));
+    },
+    async listWaitingEntriesForTier(tierId) {
+      return sql.listWaitingEntriesForTier.all(tierId).map(toWaitlistEntry);
+    },
+    async compareAndSetWaitlistStatus(id, expectedStatus, status) {
+      const result = sql.compareAndSetWaitlistStatus.run(status, id, expectedStatus);
+      if (result.changes !== 1) return null;
+      return toWaitlistEntry(db.prepare('SELECT * FROM waitlist_entries WHERE id = ?').get(id));
+    },
+    async createWaitlistOffer(offer) {
+      sql.insertWaitlistOffer.run(
+        offer.id,
+        offer.waitlistEntryId,
+        offer.userId,
+        offer.tierId,
+        offer.quantity,
+        offer.status,
+        offer.createdAt,
+        offer.expiresAt,
+      );
+      return toWaitlistOffer(sql.findWaitlistOffer.get(offer.id));
+    },
+    async findWaitlistOffer(id) {
+      return toWaitlistOffer(sql.findWaitlistOffer.get(id));
+    },
+    async findActiveOfferForTier(tierId) {
+      return toWaitlistOffer(sql.findActiveOfferForTier.get(tierId));
+    },
+    async listActiveOffersForUser(userId) {
+      return sql.listActiveOffersForUser.all(userId).map(toWaitlistOffer);
+    },
+    async listExpiredActiveOffers(before) {
+      return sql.listExpiredActiveOffers.all(before).map(toWaitlistOffer);
+    },
+    async compareAndSetOfferStatus(id, expectedStatus, status, extra = {}) {
+      const result = sql.compareAndSetOfferStatus.run(
+        status,
+        extra.acceptedAt ?? null,
+        extra.expiredAt ?? null,
+        id,
+        expectedStatus,
+      );
+      return result.changes === 1 ? toWaitlistOffer(sql.findWaitlistOffer.get(id)) : null;
     },
 
     close() {
